@@ -1,0 +1,75 @@
+---
+title: "Predict Type of Exercises"
+author: "FJMA"
+date: "July 26, 2014"
+output: html_document
+---
+
+A data set with the results of monitoring while people are doing several types of exercises is provided in [1]. In this document we try to describe an algorithm to predict what kind of exercise has been done. We are going to use the Random Forest algorithm using the commands in the caret package (see [3]). 
+
+The data set is loaded with the following instructions:
+```{r}
+pml<-read.csv("pml-training.csv")
+```
+
+The file includes 19622 observations of 160 variables. Some of these variables are missed for most of the observations. We are going to remove all the variables with more than a 30% of missing data. 
+
+
+
+```{r}
+var<-apply(sapply(pml,is.na),2,sum)<19622*0.70
+```
+
+We remove the variable X, an index of the individual and the name. These two variables should not be used to predict the type of exercise. The index X is correlated with the type of exercises, but for new data the index should not be useful to select the type of exercise. We also remove the time stamp, using the time when the exercise is done is not what we want to do, we want to to determine the type of exercises with measures done by the different appliances.  
+```{r}
+var[1:5] <- FALSE
+pml <- pml[,var]
+```
+
+The next step in the preprocessing is going to remove the variable with very low variability since it would not be very useful to predict. In order to do this we use the function nearZeroVar in the caret package
+```{r}
+library(caret)
+var2 <- nearZeroVar(pml,saveMetrics=TRUE)$nzv==FALSE
+pml <- pml[,var2]
+```
+
+Since the file provided is huge we are going to use a 5% (the sample is divided in 20 groups) of the set as a training set, since the computation time will be too long if all the data set is used
+```{r}
+set.seed(12345)
+folds <- createFolds(y=pml$classe,k=20,list=TRUE,returnTrain=FALSE) 
+training <- pml[folds[[1]],]
+```
+We use the data in the first fold calculated in order to train our data and get a prediction model. The method choose is random forest because is one of the most accurate.
+```{r}
+modFit<-train(classe ~ ., data=training,method="rf",prox=TRUE)
+modFit
+```
+We check how good is our prediction with the same data set used for training. With the contigency table we are seeing the degree of agreement of the predicted value with the real value. Parameters such as the accuracy and the kappa index indicates that in sample error or resubstitution error is almost perfect. 
+```{r}
+
+confusionMatrix(training$classe,predict(modFit,newdata=training))
+```
+In sample error is excellent,  but it would be because we are overfitting our model. In order to know what is the real quality of the prediction we are going to study the our of sample erros of resubstitution error. For that we consider another fold of the previously separated groups. The 95% Confidence Interval of the accuracy is above 0.96. Therefore, we can think that our prediction error is going to be lower than a 5%. 
+```{r}
+testing <- pml[folds[[2]],]
+confusionMatrix(testing$classe,predict(modFit,newdata=testing))
+```
+
+Cross validation can be done the new data set provided for the assignment. In this case, the predictions are correct what it is consistent with a prediction error lower than a 5%. 
+
+```{r,eval=FALSE}
+crossVal<-read.csv("pml-testing.csv")
+crossVal <- crossVal[,var]
+crossVal <- crossVal[,var2]
+predict(modFit,crossVal)
+```
+
+References 
+----------
+[1] Groupware@LES. <it>Human Active Recognition</it>.  
+http://groupware.les.inf.puc-rio.br/har
+
+[2] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz38btFWMdO
+
+[3] http://caret.r-forge.r-project.org/
